@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -212,22 +213,59 @@ func must(b []byte, err error) []byte {
 	return b
 }
 
+func getTodoByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var todo Todo
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("todos"))
+		v := b.Get(itob(id))
+		if v == nil {
+			return fmt.Errorf("todo not found")
+		}
+		return json.Unmarshal(v, &todo)
+	})
+
+	if err != nil {
+		if err.Error() == "todo not found" {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	json.NewEncoder(w).Encode(todo)
+}
+
+func setupRouter() *mux.Router {
+	r := mux.NewRouter()
+
+	// API routes
+	r.HandleFunc("/todos", getTodos).Methods("GET")
+	r.HandleFunc("/todos", createTodo).Methods("POST")
+	r.HandleFunc("/todos/{id}", getTodoByID).Methods("GET")
+	r.HandleFunc("/todos/{id}", updateTodo).Methods("PUT")
+	r.HandleFunc("/todos/{id}", deleteTodo).Methods("DELETE")
+
+	// Health check endpoint
+	r.HandleFunc("/health", healthCheck).Methods("GET")
+
+	return r
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	r := mux.NewRouter()
-
-	// API routes
-	r.HandleFunc("/todos", getTodos).Methods("GET")
-	r.HandleFunc("/todos", createTodo).Methods("POST")
-	r.HandleFunc("/todos/{id}", updateTodo).Methods("PUT")
-	r.HandleFunc("/todos/{id}", deleteTodo).Methods("DELETE")
-
-	// Health check endpoint
-	r.HandleFunc("/health", healthCheck).Methods("GET")
+	r := setupRouter()
 
 	port := os.Getenv("PORT")
 	if port == "" {
