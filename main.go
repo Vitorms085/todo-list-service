@@ -36,8 +36,35 @@ func initDB() error {
 	})
 }
 
+type PaginatedResponse struct {
+	Items      []Todo `json:"items"`
+	Page       int    `json:"page"`
+	Limit      int    `json:"limit"`
+	TotalItems int    `json:"totalItems"`
+	TotalPages int    `json:"totalPages"`
+}
+
 func getTodos(w http.ResponseWriter, r *http.Request) {
-	var todos []Todo
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+
+	page := 1    // default page
+	limit := 100 // default limit
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	var allTodos []Todo
+	var totalItems int
 
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("todos"))
@@ -46,7 +73,7 @@ func getTodos(w http.ResponseWriter, r *http.Request) {
 			if err := json.Unmarshal(v, &todo); err != nil {
 				return err
 			}
-			todos = append(todos, todo)
+			allTodos = append(allTodos, todo)
 			return nil
 		})
 	})
@@ -56,7 +83,36 @@ func getTodos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(todos)
+	totalItems = len(allTodos)
+	totalPages := (totalItems + limit - 1) / limit
+
+	if page > totalPages && totalPages > 0 {
+		page = totalPages
+	}
+
+	start := (page - 1) * limit
+	end := start + limit
+	if end > totalItems {
+		end = totalItems
+	}
+
+	var pagedTodos []Todo
+	if start < totalItems {
+		pagedTodos = allTodos[start:end]
+	} else {
+		pagedTodos = []Todo{}
+	}
+
+	response := PaginatedResponse{
+		Items:      pagedTodos,
+		Page:       page,
+		Limit:      limit,
+		TotalItems: totalItems,
+		TotalPages: totalPages,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func createTodo(w http.ResponseWriter, r *http.Request) {

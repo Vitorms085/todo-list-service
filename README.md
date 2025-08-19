@@ -86,7 +86,32 @@ The application will be available at `http://localhost`
 ## API Endpoints
 
 ### GET /todos
-List all todo items
+List todo items with pagination support.
+
+Query Parameters:
+- `page` (optional): Page number (starts at 1, default: 1)
+- `limit` (optional): Maximum number of items per page (default: 100)
+
+Example requests:
+- `GET /todos` - Returns first page with 100 items
+- `GET /todos?page=2&limit=20` - Returns second page with 20 items
+
+Response format:
+```json
+{
+    "items": [
+        {
+            "id": 1,
+            "title": "Task 1",
+            "completed": false
+        }
+    ],
+    "page": 1,
+    "limit": 100,
+    "totalItems": 1,
+    "totalPages": 1
+}
+```
 
 ### POST /todos
 Create a new todo item
